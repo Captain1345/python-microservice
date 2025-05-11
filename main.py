@@ -8,6 +8,10 @@ from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
+
+import chromadb
+from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
+
 app = FastAPI()
 
 # CORS configuration
@@ -17,6 +21,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Initialize ChromaDB
+def get_vector_collection():
+    """Gets or creates ChromaDB collection with Ollama embeddings"""
+    ollama_ef = OllamaEmbeddingFunction(
+        url="http://localhost:11434/api/embeddings",
+        model_name="nomic-embed-text:latest",
+    )
+    chroma_client = chromadb.PersistentClient(path="./demo-ai")
+    return chroma_client.get_or_create_collection(
+        name="ai-project",
+        embedding_function=ollama_ef,
+        metadata={"hnsw:space": "cosine"},
+    )
 
 class ProcessedDocument(BaseModel):
     page_content: str

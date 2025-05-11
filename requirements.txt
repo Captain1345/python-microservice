@@ -2,5 +2,6 @@ fastapi
 uvicorn
 langchain
 pymupdf
+chromadb
 python-multipart
 langchain-community
