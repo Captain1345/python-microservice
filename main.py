@@ -86,6 +86,46 @@ async def process_pdfs(files: List[UploadFile] = File(...)):
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
+
+
+# Add to your existing imports
+class DocumentChunk(BaseModel):
+    page_content: str
+    metadata: dict
+
+class AddToVectorRequest(BaseModel):
+    chunks: List[DocumentChunk]
+    file_name: str
+
+# Add this endpoint to your existing FastAPI app
+@app.post("/add-to-vector-collection")
+async def add_to_vector_collection(request: AddToVectorRequest):
+    """Adds document splits to ChromaDB vector collection"""
+    try:
+        collection = get_vector_collection()
+        documents = []
+        metadatas = []
+        ids = []
+        
+        for idx, chunk in enumerate(request.chunks):
+            documents.append(chunk.page_content)
+            metadatas.append(chunk.metadata)
+            ids.append(f"{request.file_name}_{idx}")
+        
+        collection.upsert(
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+        
+        return {"status": "success", "message": "Data added to vector store", "count": len(documents)}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8002)
