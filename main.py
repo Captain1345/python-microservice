@@ -126,6 +126,42 @@ async def add_to_vector_collection(request: AddToVectorRequest):
 
 
 
+
+# Add to your existing models
+class QueryRequest(BaseModel):
+    prompt: str
+    n_results: int = 10
+
+# Add this endpoint to your existing FastAPI app
+@app.post("/query-collection")
+async def query_collection(request: QueryRequest):
+    """Queries the vector collection for relevant documents"""
+    try:
+        collection = get_vector_collection()
+        results = collection.query(
+            query_texts=[request.prompt],
+            n_results=request.n_results
+        )
+        
+        # Format results for better JSON serialization
+        # formatted_results = {
+        #     "documents": results["documents"][0] if results["documents"] else [],
+        #     "metadatas": results["metadatas"][0] if results["metadatas"] else [],
+        #     "ids": results["ids"][0] if results["ids"] else [],
+        #     "distances": results["distances"][0] if results["distances"] else []
+        # }
+        
+        return {
+            "status": "success",
+            "results": results,
+            "query": request.prompt,
+            #"count": len(formatted_results["documents"])
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8002)
