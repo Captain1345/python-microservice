@@ -189,9 +189,9 @@ async def query_collection(request: QueryRequest):
         #     "ids": results["ids"][0] if results["ids"] else [],
         #     "distances": results["distances"][0] if results["distances"] else []
         # }
-
+        print("RESULTS: ", results)
         context = results.get("documents")[0]
-        print("CONTEXT: ", context)
+   
         prompt=request.prompt
         response = call_llm(context=context, prompt=prompt)
         return {
