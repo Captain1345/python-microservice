@@ -7,6 +7,7 @@ import os
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+from sentence_transformers import CrossEncoder
 
 import ollama
 import chromadb
@@ -40,6 +41,37 @@ def get_vector_collection():
         metadata={"hnsw:space": "cosine"},
     )
 
+def re_rank_cross_encoders(prompt: str, documents: list[str]) -> tuple[str, list[int]]:
+    """Re-ranks documents using a cross-encoder model for more accurate relevance scoring.
+
+    Uses the MS MARCO MiniLM cross-encoder model to re-rank the input documents based on
+    their relevance to the query prompt. Returns the concatenated text of the top 3 most
+    relevant documents along with their indices.
+
+    Args:
+        documents: List of document strings to be re-ranked.
+
+    Returns:
+        tuple: A tuple containing:
+            - relevant_text (str): Concatenated text from the top 3 ranked documents
+            - relevant_text_ids (list[int]): List of indices for the top ranked documents
+
+    Raises:
+        ValueError: If documents list is empty
+        RuntimeError: If cross-encoder model fails to load or rank documents
+    """
+    relevant_text = ""
+    relevant_text_ids = []
+    """ This is a lightweight cross-encoder model. when moving to production, change to 
+    high performing model """
+    encoder_model = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-2-v2")
+    ranks = encoder_model.rank(prompt, documents, top_k=5)
+    for rank in ranks:
+        relevant_text += documents[rank["corpus_id"]]
+        relevant_text_ids.append(rank["corpus_id"])
+
+    return relevant_text, relevant_text_ids
+
 class ProcessedDocument(BaseModel):
     page_content: str
     metadata: Dict
@@ -65,7 +97,7 @@ async def process_pdfs(files: List[UploadFile] = File(...)):
 
             # Split documents
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=400,
+                chunk_size=800,
                 chunk_overlap=100,
                 separators=["\n\n", "\n", ".", "?", "!", " ", ""],
             )
@@ -191,9 +223,10 @@ async def query_collection(request: QueryRequest):
         # }
         print("RESULTS: ", results)
         context = results.get("documents")[0]
+        relevant_text, relevant_text_ids = re_rank_cross_encoders(documents=context, prompt=request.prompt)
    
         prompt=request.prompt
-        response = call_llm(context=context, prompt=prompt)
+        response = call_llm(context=relevant_text, prompt=prompt)
         return {
             "status": "success",
             "results": results,
