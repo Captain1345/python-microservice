@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+import os
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,6 +11,8 @@ from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import HumanMessage, SystemMessage
 
 import ollama
 import chromadb
@@ -17,6 +22,7 @@ from prompts import system_prompt
 
 
 app = FastAPI()
+load_dotenv()
 
 # CORS configuration
 app.add_middleware(
@@ -159,7 +165,7 @@ async def add_to_vector_collection(request: AddToVectorRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def call_llm(context: str, prompt: str):
+def call_local_llm(context: str, prompt: str):
     """Calls the language model with context and prompt to generate a response.
 
     Uses Ollama to stream responses from a language model by providing context and a
@@ -237,6 +243,46 @@ async def query_collection(request: QueryRequest):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def call_llm(context: str, prompt: str):
+    """Calls the Gemini model through LangChain with context and prompt to generate a response.
+
+    Args:
+        context: String containing the relevant context for answering the question
+        prompt: String containing the user's question
+
+    Returns:
+        String containing the generated response
+
+    Raises:
+        Exception: If there are issues communicating with the Gemini API
+    """
+    try:
+        # Initialize the Gemini chat model
+        chat = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            temperature=0.7,
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            streaming=True,
+            convert_system_message_to_human=True
+        )
+
+        # Create messages
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Context: {context}\nQuestion: {prompt}")
+        ]
+
+        # Get streaming response
+        response = ""
+        for chunk in chat.stream(messages):
+            response += chunk.content
+
+        return response
+
+    except Exception as e:
+        raise Exception(f"Error calling Gemini API: {str(e)}")
 
 
 if __name__ == "__main__":
