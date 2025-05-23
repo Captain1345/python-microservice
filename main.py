@@ -1,3 +1,4 @@
+from tkinter import FALSE
 from dotenv import load_dotenv
 import os
 
@@ -12,7 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 import ollama
 import chromadb
@@ -204,10 +205,19 @@ def call_local_llm(context: str, prompt: str):
 
 
 
-# Add to your existing models
+class Message(BaseModel):
+    id: str = None
+    conversation_id: str = None
+    sender: str  # "user" or "assistant"
+    content: str
+    created_at: str = None
+    metadata: dict = {}
+
 class QueryRequest(BaseModel):
-    prompt: str
+    conversationHistory: List[Message] = []  # History from Supabase
+    lastMessageSent: str
     n_results: int = 10
+
 
 # Add this endpoint to your existing FastAPI app
 @app.post("/query-collection")
@@ -215,8 +225,9 @@ async def query_collection(request: QueryRequest):
     """Queries the vector collection for relevant documents"""
     try:
         collection = get_vector_collection()
+        #print("REQUEST", request)
         results = collection.query(
-            query_texts=[request.prompt],
+            query_texts=[request.lastMessageSent],
             n_results=request.n_results
         )
         
@@ -229,14 +240,18 @@ async def query_collection(request: QueryRequest):
         # }
         print("RESULTS: ", results)
         context = results.get("documents")[0]
-        relevant_text, relevant_text_ids = re_rank_cross_encoders(documents=context, prompt=request.prompt)
+        relevant_text, relevant_text_ids = re_rank_cross_encoders(prompt=request.lastMessageSent, documents=context)
    
-        prompt=request.prompt
-        response = call_llm(context=relevant_text, prompt=prompt)
+            # Pass conversation history to the LLM
+        response = call_llm_with_history(
+            context=relevant_text, 
+            prompt=request.lastMessageSent,
+            conversation_history=request.conversationHistory
+        )
         return {
             "status": "success",
             "results": results,
-            "query": request.prompt,
+            "query": request.lastMessageSent,
             "llmResponse": response
             #"count": len(formatted_results["documents"])
         }
@@ -283,6 +298,61 @@ def call_llm(context: str, prompt: str):
 
     except Exception as e:
         raise Exception(f"Error calling Gemini API: {str(e)}")
+
+
+def truncate_conversation_history(history, max_messages=10):
+    """Truncate conversation history to avoid exceeding context limits"""
+    if len(history) <= max_messages:
+        return history
+    
+    # Keep the most recent messages
+    return history[-max_messages:]
+
+def call_llm_with_history(context: str, prompt: str, conversation_history: List[Message] = []):
+    """Calls the Gemini model with context, prompt, and conversation history.
+
+    Args:
+        context: String containing the relevant context for answering the question
+        prompt: String containing the user's current question
+        conversation_history: List of previous messages from Supabase
+
+    Returns:
+        String containing the generated response
+    """
+    try:
+        # Initialize the Gemini chat model
+        chat = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            temperature=0.7,
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            streaming=True,
+            convert_system_message_to_human=False
+        )
+
+        # Convert conversation history to LangChain message format
+        messages = [SystemMessage(content=system_prompt)]
+        
+        # Add conversation history
+        for msg in conversation_history:
+            if msg.sender.lower() == "user":
+                messages.append(HumanMessage(content=msg.content))
+            elif msg.sender.lower() == "assistant":
+                messages.append(AIMessage(content=msg.content))
+        
+        # Add the current context and question
+        messages.append(HumanMessage(content=f"Context: {context}\nQuestion: {prompt}"))
+
+        # Get streaming response
+        response = ""
+        for chunk in chat.stream(messages):
+            response += chunk.content
+
+        return response
+
+    except Exception as e:
+        raise Exception(f"Error calling Gemini API: {str(e)}")
+
+
 
 
 if __name__ == "__main__":
