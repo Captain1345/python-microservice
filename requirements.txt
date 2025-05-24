@@ -2,6 +2,11 @@ fastapi
 uvicorn
 langchain
 pymupdf
+pinecone
 chromadb
 python-multipart
 langchain-community
+python-dotenv
+sentence-transformers
+openai
+langchain-openai
