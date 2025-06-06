@@ -12,7 +12,7 @@ from prompts import system_prompt
 class Message(BaseModel):
     id: str = None
     conversation_id: str = None
-    sender: str  # "user" or "assistant"
+    role: str  # "user" or "assistant"
     content: str
     created_at: str = None
     metadata: dict = {}
@@ -80,8 +80,8 @@ def call_llm_with_history(context: str, prompt: str, conversation_history: List[
     try:
         # Initialize the Gemini chat model
         chat = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.7,
+            model="gemini-2.5-flash-preview-05-20",
+            temperature=1,
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             streaming=True,
             convert_system_message_to_human=False
@@ -92,9 +92,9 @@ def call_llm_with_history(context: str, prompt: str, conversation_history: List[
         
         # Add conversation history
         for msg in conversation_history:
-            if msg.sender.lower() == "user":
+            if msg.role.lower() == "user":
                 messages.append(HumanMessage(content=msg.content))
-            elif msg.sender.lower() == "assistant":
+            elif msg.role.lower() == "assistant":
                 messages.append(AIMessage(content=msg.content))
         
         # Add the current context and question
