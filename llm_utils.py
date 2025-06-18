@@ -4,6 +4,8 @@ import ollama
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from pydantic import BaseModel
+import json
+from langchain_core.prompts import ChatPromptTemplate
 
 # Import the system prompt
 from prompts import system_prompt
@@ -108,4 +110,56 @@ def call_llm_with_history(context: str, prompt: str, conversation_history: List[
         return response
 
     except Exception as e:
-        raise Exception(f"Error calling Gemini API: {str(e)}")
+        # Handle potential exceptions, e.g., API errors
+        print(f"An error occurred: {e}")
+        return None
+
+
+def call_llm_for_feedback(feedback_prompt: str, all_messages: List[Message]):
+    """
+    Calls the Gemini LLM with a formatted interview transcript to get feedback.
+
+    Args:
+        feedback_prompt (str): The prompt instructing the LLM on how to provide feedback.
+        all_messages (List[Message]): The list of all messages in the conversation.
+
+    Returns:
+        str: The generated feedback from the LLM.
+    """
+    try:
+        # Initialize the Gemini chat model
+        chat = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash-preview-05-20",
+            temperature=0.7,
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            convert_system_message_to_human=True
+        )
+
+        # Format the conversation history into a structured transcript
+        interview_transcript = [{"role": msg.role, "content": msg.content} for msg in all_messages]
+
+        # Use LangChain's prompt templates for a clean and maintainable prompt
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", feedback_prompt),
+                ("human", "Please provide feedback on the following interview transcript:\n\n```json\n{transcript}\n```"),
+            ]
+        )
+
+        # Create the LangChain Expression Language (LCEL) chain
+        chain = prompt_template | chat
+
+        # For debugging: Print the formatted JSON transcript
+        formatted_transcript = json.dumps(interview_transcript, indent=2)
+        print("--- Sending the following transcript to the LLM ---")
+        print(formatted_transcript)
+        print("---------------------------------------------------")
+
+        # Invoke the chain with the interview transcript
+        response = chain.invoke({"transcript": formatted_transcript})
+
+        return response.content
+
+    except Exception as e:
+        print(f"An error occurred during feedback generation: {e}")
+        return None

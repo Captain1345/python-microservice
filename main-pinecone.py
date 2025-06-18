@@ -13,7 +13,7 @@ from sentence_transformers import CrossEncoder
 
 from pinecone import Pinecone
 # Add this import at the top with your other imports
-from llm_utils import call_llm_with_history, Message
+from llm_utils import call_llm_with_history, Message, call_llm_for_feedback
 
 
 app = FastAPI()
@@ -215,6 +215,40 @@ async def query_collection(request: QueryRequest):
             "llmResponse": response
         }
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class FeedbackRequest(BaseModel):
+    conversation_id: str
+    allMessages: List[Message]
+
+
+@app.post("/pm-feedback")
+async def get_pm_feedback(request: FeedbackRequest):
+    """
+    Receives a conversation and returns feedback from a Gemini LLM.
+    """
+    try:
+        # This prompt instructs the LLM to act as a PM and provide feedback
+        feedback_prompt = (
+            """You are a world-class product manager. Please analyze the following interview transcript and give your
+            insightful, actionable feedback"""
+        )
+
+        # The 'call_llm_for_feedback' function expects a prompt and a history.
+        # We'll use our feedback_prompt as the main prompt and pass all messages as history.
+        # No external context from the vector store is needed here.
+        response = call_llm_for_feedback(
+            feedback_prompt=feedback_prompt,
+            all_messages=request.allMessages
+        )
+
+        return {
+            "status": "success",
+            "conversation_id": request.conversation_id,
+            "llmFeedback": response
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
